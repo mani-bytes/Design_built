@@ -23,21 +23,21 @@ export default function ExportButtons({ report }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-muted)', fontSize: '0.82rem', fontWeight: 500 }}>
         <Download size={13} /> Export:
       </span>
-      {exports.map(({ id, label, icon: Icon, color, fn }) => (
+      {exports.map((item) => (
         <button
-          key={id}
-          id={id}
-          onClick={() => handle(fn, label)}
+          key={item.id}
+          id={item.id}
+          onClick={() => handle(item.fn, item.label)}
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
-            padding: '5px 12px', borderRadius: '0.5rem', border: `1px solid ${color}40`,
-            background: `${color}15`, color, fontSize: '0.8rem', fontWeight: 600,
+            padding: '5px 12px', borderRadius: '0.5rem', border: `1px solid ${item.color}40`,
+            background: `${item.color}15`, color: item.color, fontSize: '0.8rem', fontWeight: 600,
             cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s ease',
           }}
-          onMouseOver={e => { e.currentTarget.style.background = `${color}25`; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-          onMouseOut={e => { e.currentTarget.style.background = `${color}15`; e.currentTarget.style.transform = 'translateY(0)'; }}
+          onMouseOver={e => { e.currentTarget.style.background = `${item.color}25`; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseOut={e => { e.currentTarget.style.background = `${item.color}15`; e.currentTarget.style.transform = 'translateY(0)'; }}
         >
-          <Icon size={13} /> {label}
+          <item.icon size={13} /> {item.label}
         </button>
       ))}
     </div>

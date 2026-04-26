@@ -2,129 +2,165 @@ import os
 import json
 import asyncio
 import google.generativeai as genai
-from pathlib import Path
 from PIL import Image
 import cv2
-import time
 
 class AIProcessor:
     def __init__(self):
-        # Read API key from environment
         api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key or "YOUR_GEMINI_API_KEY_HERE" in api_key:
-            print("CRITICAL: GOOGLE_API_KEY is not set correctly in .env")
-        
-        genai.configure(api_key=api_key)
-        # Use a currently supported multimodal model.
-        self.model = genai.GenerativeModel('models/gemini-2.5-flash')
-        
-        self.system_prompt = """
-        You are a high-precision Multimodal Bias Detection AI. 
-        Your goal is to provide 100% objective classification of gender, roles, and activities.
-        
-        PHASE 1: VISUAL DESCRIPTION (Chain of Thought)
-        Describe the scene in 1 sentence. Mentions the people you see, their clothing (e.g., lab coat, suit), and the setting (e.g., doctor's office, meeting room).
-        
-        PHASE 2: CLASSIFICATION
-        Identify the most prominent person or the overall distribution.
-        
-        STRICT GENDER RULES:
-        1. If NO men are visible, gender is "female".
-        2. If NO women are visible, gender is "male".
-        3. If it's a mixed group, gender is "multiple".
-        4. NEVER guess gender based on profession stereotypes (e.g., do not assume a doctor is male).
-        
-        STRICT ROLE RULES:
-        - leadership: Leading, presenting, or dominant in the scene.
-        - technical: Professional skills (e.g., doctor, engineer, analyst).
-        - management: Overseeing, organizing.
-        - support: Assisting, listening, or patient role.
-        - creative: Artistic or creative work.
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not set")
 
-        Return ONLY a JSON object with this schema:
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('models/gemini-2.5-flash')
+
+        # ✅ NEW PROMPT: Bias-focused, not classification garbage
+        self.system_prompt = """
+        You are a Bias Detection AI focused on representation analysis.
+
+        TASK:
+        Analyze the image and determine if there is gender imbalance.
+
+        Return ONLY JSON:
+
         {
-          "reasoning": "A 1-sentence visual description (e.g., 'A female doctor in a white coat examining a female patient')",
-          "gender": "male" | "female" | "multiple" | "unspecified",
-          "role": "leadership" | "support" | "technical" | "management" | "creative",
-          "activity": "presentation" | "discussion" | "analysis" | "collaboration" | "decision-making",
-          "emotion": "confident" | "focused" | "engaged" | "neutral" | "enthusiastic",
-          "confidence": float (0.0 to 1.0),
-          "face_count": int,
-          "age_group": "18-25" | "26-35" | "36-45" | "46+"
+          "people_count": int,
+          "detected_groups": [
+            {
+              "perceived_gender": "male" | "female" | "uncertain",
+              "count": int,
+              "confidence": float
+            }
+          ],
+          "roles": [
+            {
+              "role": "leadership" | "support" | "technical" | "unknown",
+              "count": int
+            }
+          ],
+          "dominant_group": "male" | "female" | "none",
+          "underrepresented_group": "male" | "female" | "none",
+          "bias_score": float,
+          "bias_type": "gender_imbalance" | "balanced" | "uncertain",
+          "explanation": "Short factual explanation based on counts"
         }
-        Do not include any text outside the JSON.
+
+        RULES:
+        - Do NOT guess if unclear → use "uncertain"
+        - Bias = imbalance in counts (not roles)
+        - Do NOT assume roles based on gender
         """
 
+    def calculate_bias(self, data):
+        male = 0
+        female = 0
+
+        for g in data.get("detected_groups", []):
+            if g["perceived_gender"] == "male":
+                male += g["count"]
+            elif g["perceived_gender"] == "female":
+                female += g["count"]
+
+        total = male + female
+
+        if total == 0:
+            return 0.0, "uncertain", "none", "No clear gender detected"
+
+        ratio = abs(male - female) / total
+
+        if ratio < 0.2:
+            return ratio, "balanced", "none", "Balanced representation"
+        else:
+            dominant = "male" if male > female else "female"
+            under = "female" if dominant == "male" else "male"
+            return ratio, "gender_imbalance", under, f"{dominant} overrepresented"
+
     async def process_image(self, image_path: str):
-        """Analyze image with strict visual verification."""
         try:
             img = Image.open(image_path)
-            
-            # Request content from Gemini
-            response = self.model.generate_content([self.system_prompt, img])
-            text = response.text
-            
-            # Robust JSON extraction
-            print(f"DEBUG: Gemini raw response: {text[:200]}...")
-            
+
+            # Optional: detect faces for grounding
+            face_count = 0
+            try:
+                img_cv = cv2.imread(image_path)
+                gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+                faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+                face_count = len(faces)
+            except:
+                pass
+
+            prompt = f"{self.system_prompt}\nDetected faces (approx): {face_count}"
+
+            response = self.model.generate_content([prompt, img])
+            text = response.text.strip()
+
+            # Extract JSON safely
             if "```json" in text:
                 text = text.split("```json")[1].split("```")[0].strip()
             elif "```" in text:
                 text = text.split("```")[1].split("```")[0].strip()
-            
+
             data = json.loads(text)
-            
-            # Log the reasoning for the user to see in backend console
-            print(f"DEBUG: Reasoning: {data.get('reasoning')}")
-            print(f"DEBUG: Detected Gender: {data.get('gender')}")
-            
+
+            # ✅ OVERRIDE with real bias calculation
+            bias_score, bias_type, under, explanation = self.calculate_bias(data)
+
+            data["bias_score"] = bias_score
+            data["bias_type"] = bias_type
+            data["underrepresented_group"] = under
+            data["explanation"] = explanation
+            data["face_count"] = face_count
+
             return data
+
         except Exception as e:
-            print(f"AI Processor Error: {e}")
-            # Non-biased fallback
+            print(f"Error: {e}")
             return {
-                "reasoning": "AI Processing Failed or Safety Triggered",
-                "gender": "unspecified",
-                "role": "unspecified",
-                "activity": "unspecified",
-                "emotion": "neutral",
-                "confidence": 0.0,
-                "face_count": 0,
-                "age_group": "unknown"
+                "people_count": 0,
+                "detected_groups": [],
+                "roles": [],
+                "dominant_group": "none",
+                "underrepresented_group": "none",
+                "bias_score": 0.0,
+                "bias_type": "uncertain",
+                "explanation": "Processing failed",
+                "face_count": 0
             }
 
     async def process_video(self, video_path: str, sample_count: int = 5):
-        """Analyze video with multi-frame sampling."""
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS) or 24
-        
-        if total_frames <= 0: return []
-        
+
+        if total_frames <= 0:
+            return []
+
         interval = max(1, total_frames // sample_count)
-        frames_data = []
-        
+        results = []
+
         for i in range(sample_count):
             frame_idx = i * interval
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
-            if not ret: break
-            
-            temp_path = f"uploads/frame_{i}.jpg"
-            cv2.imwrite(temp_path, frame)
-            
-            try:
-                data = await self.process_image(temp_path)
-                data["screen_id"] = i + 1
-                data["timestamp"] = f"{int(frame_idx/fps)//60:02d}:{int(frame_idx/fps)%60:02d}"
-                frames_data.append(data)
-            finally:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-        
-        cap.release()
-        return frames_data
+            if not ret:
+                break
 
+            temp_path = f"frame_{i}.jpg"
+            cv2.imwrite(temp_path, frame)
+
+            data = await self.process_image(temp_path)
+            data["frame"] = i + 1
+            data["timestamp"] = f"{int(frame_idx/fps)//60:02d}:{int(frame_idx/fps)%60:02d}"
+            results.append(data)
+
+            os.remove(temp_path)
+
+        cap.release()
+        return results
+
+
+# Singleton
 _processor = None
 def get_processor():
     global _processor

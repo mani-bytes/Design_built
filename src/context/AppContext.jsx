@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useContext, useState } from 'react';
 
 const AppContext = createContext(null);
 
@@ -20,6 +21,31 @@ function generateMockFrames(count = 5, mediaType = 'image') {
     face_count: Math.floor(1 + Math.random() * 3),
     age_group: ['18-25', '26-35', '36-45', '46+'][Math.floor(Math.random() * 4)],
   }));
+}
+
+function generateTextFrame(text = '') {
+  const lowered = text.toLowerCase();
+  const maleSignals = ['he', 'his', 'him', 'man', 'male'];
+  const femaleSignals = ['she', 'her', 'woman', 'female'];
+
+  const maleHits = maleSignals.reduce((sum, term) => sum + (lowered.includes(term) ? 1 : 0), 0);
+  const femaleHits = femaleSignals.reduce((sum, term) => sum + (lowered.includes(term) ? 1 : 0), 0);
+
+  const gender = maleHits === femaleHits ? 'unknown' : maleHits > femaleHits ? 'male' : 'female';
+  const confidenceBase = Math.min(0.94, 0.68 + text.trim().length / 2500);
+
+  return {
+    screen_id: 1,
+    timestamp: null,
+    gender,
+    role: 'analysis',
+    activity: 'text review',
+    emotion: 'focused',
+    confidence: +confidenceBase.toFixed(2),
+    face_count: 0,
+    age_group: 'N/A',
+    reasoning: 'Generated from textual indicators and contextual wording frequency.',
+  };
 }
 
 function calculateBiasMetrics(frames) {
@@ -63,14 +89,15 @@ export function AppProvider({ children }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [analysisStep, setAnalysisStep] = useState('');
-  const [history, setHistory] = useState([]);
-
-  useEffect(() => {
+  const [history, setHistory] = useState(() => {
     const stored = localStorage.getItem('bias_history');
-    if (stored) {
-      try { setHistory(JSON.parse(stored)); } catch {}
+    if (!stored) return [];
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
     }
-  }, []);
+  });
 
   const saveToHistory = (report) => {
     setHistory(prev => {
@@ -85,13 +112,21 @@ export function AppProvider({ children }) {
     setUploadProgress(0);
     setCurrentReport(null);
 
-    const steps = [
-      { msg: 'Uploading media...', progress: 20 },
-      { msg: 'Extracting frames...', progress: 40 },
-      { msg: 'Running multimodal inference...', progress: 60 },
-      { msg: 'Calculating bias metrics...', progress: 80 },
-      { msg: 'Generating report...', progress: 95 },
-    ];
+    const steps = mediaInfo.type === 'text'
+      ? [
+        { msg: 'Uploading text...', progress: 20 },
+        { msg: 'Parsing textual content...', progress: 40 },
+        { msg: 'Running language inference...', progress: 60 },
+        { msg: 'Calculating bias metrics...', progress: 80 },
+        { msg: 'Generating report...', progress: 95 },
+      ]
+      : [
+        { msg: 'Uploading media...', progress: 20 },
+        { msg: 'Extracting frames...', progress: 40 },
+        { msg: 'Running multimodal inference...', progress: 60 },
+        { msg: 'Calculating bias metrics...', progress: 80 },
+        { msg: 'Generating report...', progress: 95 },
+      ];
 
     for (const step of steps) {
       setAnalysisStep(step.msg);
@@ -99,8 +134,9 @@ export function AppProvider({ children }) {
       await new Promise(r => setTimeout(r, 800 + Math.random() * 400));
     }
 
-    const frameCount = mediaInfo.type === 'video' ? 8 : 1;
-    const frames = generateMockFrames(frameCount, mediaInfo.type);
+    const frames = mediaInfo.type === 'text'
+      ? [generateTextFrame(mediaInfo.text || '')]
+      : generateMockFrames(mediaInfo.type === 'video' ? 8 : 1, mediaInfo.type);
     const metrics = calculateBiasMetrics(frames);
 
     const report = {
@@ -109,6 +145,7 @@ export function AppProvider({ children }) {
       media_name: mediaInfo.name || 'URL Input',
       media_type: mediaInfo.type,
       media_url: mediaInfo.previewUrl || null,
+      source_text: mediaInfo.type === 'text' ? (mediaInfo.text || '') : null,
       frames,
       ...metrics,
     };

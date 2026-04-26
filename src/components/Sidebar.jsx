@@ -47,14 +47,14 @@ export default function Sidebar() {
           Navigation
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+          {NAV_ITEMS.map((item) => (
             <NavLink
-              key={to}
-              to={to}
+              key={item.to}
+              to={item.to}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
-              <Icon size={18} />
-              {label}
+              <item.icon size={18} />
+              {item.label}
             </NavLink>
           ))}
         </div>

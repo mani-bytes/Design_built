@@ -171,8 +171,8 @@ export default function DashboardPage() {
                 </h3>
                 <p style={{ color: 'var(--color-muted)', fontSize: '0.875rem', maxWidth: 300, margin: '0 auto' }}>
                   {analyzing
-                    ? 'AI is analyzing your media for bias patterns. This will only take a moment.'
-                    : 'Upload an image, video, or enter a URL and click Analyze to generate a detailed bias analysis report.'
+                    ? 'AI is analyzing your content for bias patterns. This will only take a moment.'
+                    : 'Upload an image or video, paste text, or enter a URL and click Analyze to generate a detailed bias analysis report.'
                   }
                 </p>
               </div>

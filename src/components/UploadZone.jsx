@@ -1,35 +1,63 @@
 import { useState, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useApp } from '../context/AppContext';
-import { Upload, Link as LinkIcon, X, Image, Film, Play, Loader2, Zap, AlertCircle } from 'lucide-react';
+import { Upload, Link as LinkIcon, X, Image, Film, Play, Loader2, Zap, AlertCircle, FileText, Type } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function UploadZone({ onAnalysisStart }) {
   const { analyze, analyzing, uploadProgress, analysisStep } = useApp();
-  const [mode, setMode] = useState('file'); // 'file' | 'url'
+  const [mode, setMode] = useState('file'); // 'file' | 'url' | 'text'
   const [url, setUrl] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [textInput, setTextInput] = useState('');
+  const [textFileName, setTextFileName] = useState('');
   const [fileError, setFileError] = useState('');
   const videoRef = useRef();
+  const textFileInputRef = useRef(null);
 
   const ACCEPTED = {
     'image/jpeg': ['.jpg', '.jpeg'],
     'image/png': ['.png'],
     'video/mp4': ['.mp4'],
+    'video/webm': ['.webm'],
+    'video/quicktime': ['.mov'],
+    'text/plain': ['.txt'],
+    'text/markdown': ['.md'],
   };
 
   const onDrop = (accepted, rejected) => {
     setFileError('');
     if (rejected.length > 0) {
-      setFileError('Invalid file type. Accept: JPG, PNG, MP4');
+      setFileError('Invalid file type. Accept: JPG, PNG, MP4, WEBM, MOV, TXT, MD');
       return;
     }
     if (accepted.length > 0) {
       const f = accepted[0];
       setFile(f);
-      const url = URL.createObjectURL(f);
-      setPreview(url);
+
+      if (f.type.startsWith('text/') || /\.(txt|md)$/i.test(f.name)) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const content = String(reader.result || '');
+          setTextInput(content);
+          setTextFileName(f.name);
+        };
+        reader.onerror = () => {
+          setFileError('Unable to read text file. Please try another file.');
+        };
+        reader.readAsText(f);
+        if (preview) {
+          URL.revokeObjectURL(preview);
+          setPreview(null);
+        }
+        setMode('text');
+        return;
+      }
+
+      const mediaPreviewUrl = URL.createObjectURL(f);
+      setPreview(mediaPreviewUrl);
+      setMode('file');
     }
   };
 
@@ -45,6 +73,30 @@ export default function UploadZone({ onAnalysisStart }) {
     if (preview) URL.revokeObjectURL(preview);
     setFile(null);
     setPreview(null);
+    setTextFileName('');
+  };
+
+  const handleTextFilePick = (event) => {
+    const picked = event.target.files?.[0];
+    if (!picked) return;
+
+    if (!(picked.type.startsWith('text/') || /\.(txt|md)$/i.test(picked.name))) {
+      setFileError('Invalid text file. Accept: TXT, MD');
+      return;
+    }
+
+    setFileError('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = String(reader.result || '');
+      setTextInput(content);
+      setTextFileName(picked.name);
+      setFile(picked);
+    };
+    reader.onerror = () => {
+      setFileError('Unable to read text file. Please try another file.');
+    };
+    reader.readAsText(picked);
   };
 
   const handleAnalyze = async () => {
@@ -58,11 +110,19 @@ export default function UploadZone({ onAnalysisStart }) {
         type: isVideo ? 'video' : 'image',
         previewUrl: preview,
       };
-    } else {
+    } else if (mode === 'url') {
       if (!url.trim()) { toast.error('Please enter a URL'); return; }
       if (!/^https?:\/\/.+/.test(url.trim())) { toast.error('Please enter a valid URL starting with http:// or https://'); return; }
-      const isVideo = /\.(mp4|webm|ogg)(\?.*)?$/i.test(url);
+      const isVideo = /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url);
       mediaInfo = { name: url, type: isVideo ? 'video' : 'image', previewUrl: url };
+    } else {
+      const trimmed = textInput.trim();
+      if (!trimmed) { toast.error('Please add text to analyze'); return; }
+      mediaInfo = {
+        name: textFileName || 'Text Input',
+        type: 'text',
+        text: trimmed,
+      };
     }
 
     try {
@@ -81,7 +141,7 @@ export default function UploadZone({ onAnalysisStart }) {
     <div className="glass-card" style={{ padding: '1.75rem' }}>
       <div style={{ marginBottom: '1.25rem' }}>
         <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'white', marginBottom: 4 }}>Upload Media for Analysis</h2>
-        <p style={{ color: 'var(--color-muted)', fontSize: '0.875rem' }}>Upload images, videos, or provide a URL to analyze for bias</p>
+        <p style={{ color: 'var(--color-muted)', fontSize: '0.875rem' }}>Upload images, videos, add text, or provide a URL to analyze for bias</p>
       </div>
 
       {/* Mode Toggle */}
@@ -89,21 +149,22 @@ export default function UploadZone({ onAnalysisStart }) {
         {[
           { id: 'file', label: 'File Upload', icon: Upload },
           { id: 'url', label: 'URL Input', icon: LinkIcon },
-        ].map(({ id, label, icon: Icon }) => (
+          { id: 'text', label: 'Text Input', icon: Type },
+        ].map((item) => (
           <button
-            key={id}
-            id={`mode-${id}`}
-            onClick={() => setMode(id)}
+            key={item.id}
+            id={`mode-${item.id}`}
+            onClick={() => setMode(item.id)}
             style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '0.5rem', borderRadius: '0.625rem', border: 'none', cursor: 'pointer',
               fontSize: '0.875rem', fontWeight: 500, transition: 'all 0.2s ease', fontFamily: 'inherit',
-              background: mode === id ? 'var(--color-surface)' : 'transparent',
-              color: mode === id ? 'white' : 'var(--color-muted)',
-              boxShadow: mode === id ? '0 2px 8px rgba(0,0,0,0.3)' : 'none',
+              background: mode === item.id ? 'var(--color-surface)' : 'transparent',
+              color: mode === item.id ? 'white' : 'var(--color-muted)',
+              boxShadow: mode === item.id ? '0 2px 8px rgba(0,0,0,0.3)' : 'none',
             }}
           >
-            <Icon size={15} /> {label}
+            <item.icon size={15} /> {item.label}
           </button>
         ))}
       </div>
@@ -132,7 +193,7 @@ export default function UploadZone({ onAnalysisStart }) {
                 or click to browse files
               </p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                {['JPG', 'PNG', 'MP4'].map(t => (
+                {['JPG', 'PNG', 'MP4', 'WEBM', 'MOV', 'TXT', 'MD'].map(t => (
                   <span key={t} className="badge" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-muted)' }}>{t}</span>
                 ))}
               </div>
@@ -168,7 +229,7 @@ export default function UploadZone({ onAnalysisStart }) {
             </div>
           )}
         </>
-      ) : (
+      ) : mode === 'url' ? (
         <div>
           <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Media URL
@@ -186,8 +247,44 @@ export default function UploadZone({ onAnalysisStart }) {
             />
           </div>
           <p style={{ color: 'var(--color-muted)', fontSize: '0.78rem', marginTop: 6 }}>
-            Supports image (JPG, PNG) and video (MP4) URLs
+            Supports image and video URLs (MP4, WEBM, MOV)
           </p>
+        </div>
+      ) : (
+        <div>
+          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Text Content
+          </label>
+          <textarea
+            id="text-input"
+            value={textInput}
+            onChange={e => setTextInput(e.target.value)}
+            placeholder="Paste text content here for analysis..."
+            className="form-input"
+            rows={7}
+            style={{ resize: 'vertical', minHeight: 140 }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => textFileInputRef.current?.click()}
+              className="btn"
+              style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem' }}
+            >
+              <FileText size={14} />
+              Upload TXT / MD
+            </button>
+            <input
+              ref={textFileInputRef}
+              type="file"
+              accept=".txt,.md,text/plain,text/markdown"
+              onChange={handleTextFilePick}
+              style={{ display: 'none' }}
+            />
+            <span style={{ color: 'var(--color-muted)', fontSize: '0.78rem' }}>
+              {textFileName ? `Loaded: ${textFileName}` : `${textInput.trim().length} characters`}
+            </span>
+          </div>
         </div>
       )}
 

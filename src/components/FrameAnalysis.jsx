@@ -124,14 +124,22 @@ function DetailItem({ icon, label, value, valueStyle = {} }) {
 }
 
 export default function FrameAnalysis({ frames, mediaType }) {
+  const analysisTitle = mediaType === 'video'
+    ? 'Frame-by-Frame Analysis'
+    : mediaType === 'text'
+      ? 'Text Analysis'
+      : 'Image Analysis';
+
+  const itemLabel = mediaType === 'video' ? 'frames' : mediaType === 'text' ? 'segments' : 'screen';
+
   return (
     <div>
       <div style={{ marginBottom: '1rem' }}>
         <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'white', marginBottom: 4 }}>
-          {mediaType === 'video' ? 'Frame-by-Frame Analysis' : 'Image Analysis'}
+          {analysisTitle}
         </h3>
         <p style={{ color: 'var(--color-muted)', fontSize: '0.82rem' }}>
-          {frames.length} {mediaType === 'video' ? 'frames' : 'screen'} analyzed • Click to expand details
+          {frames.length} {itemLabel} analyzed • Click to expand details
         </p>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>

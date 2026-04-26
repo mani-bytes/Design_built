@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { getSeverityLevel } from '../utils/exportUtils';
 

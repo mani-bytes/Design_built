@@ -7,12 +7,13 @@ import FrameAnalysis from '../components/FrameAnalysis';
 import ExportButtons from '../components/ExportButtons';
 import BiasBanner from '../components/BiasBanner';
 import { getSeverityLevel, formatDate } from '../utils/exportUtils';
-import { Trash2, Clock, Image, Film, Eye, Search, Filter, ChevronRight } from 'lucide-react';
+import { Trash2, Clock, Image, Film, Eye, Search, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function HistoryCard({ report, onDelete, onView, isSelected }) {
   const sev = getSeverityLevel(report.bias_score);
   const isVideo = report.media_type === 'video';
+  const isText = report.media_type === 'text';
   const name = report.media_name?.length > 30 ? report.media_name.slice(0, 30) + '...' : report.media_name;
 
   return (
@@ -24,7 +25,7 @@ function HistoryCard({ report, onDelete, onView, isSelected }) {
       <div style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: 12 }}>
         {/* Icon */}
         <div style={{ width: 40, height: 40, borderRadius: '0.75rem', background: `${sev.color}15`, border: `1px solid ${sev.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          {isVideo ? <Film size={18} style={{ color: sev.color }} /> : <Image size={18} style={{ color: sev.color }} />}
+          {isText ? <FileText size={18} style={{ color: sev.color }} /> : isVideo ? <Film size={18} style={{ color: sev.color }} /> : <Image size={18} style={{ color: sev.color }} />}
         </div>
 
         {/* Info */}
@@ -38,7 +39,7 @@ function HistoryCard({ report, onDelete, onView, isSelected }) {
               Bias: {(report.bias_score * 100).toFixed(0)}%
             </span>
             <span style={{ fontSize: '0.73rem', color: 'var(--color-muted)' }}>
-              {report.frames.length} frames
+              {report.frames.length} {report.media_type === 'text' ? 'segments' : 'frames'}
             </span>
           </div>
         </div>
@@ -70,7 +71,7 @@ export default function HistoryPage() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all'); // 'all' | 'high' | 'low' | 'image' | 'video'
+  const [filter, setFilter] = useState('all'); // 'all' | 'high' | 'low' | 'image' | 'video' | 'text'
   const [activeTab, setActiveTab] = useState('frames');
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -94,7 +95,8 @@ export default function HistoryPage() {
       (filter === 'high' && r.bias_score > 0.5) ||
       (filter === 'low' && r.bias_score <= 0.2) ||
       (filter === 'image' && r.media_type === 'image') ||
-      (filter === 'video' && r.media_type === 'video');
+      (filter === 'video' && r.media_type === 'video') ||
+      (filter === 'text' && r.media_type === 'text');
     return matchSearch && matchFilter;
   });
 
@@ -136,6 +138,7 @@ export default function HistoryPage() {
                 <option value="low">Low Bias</option>
                 <option value="image">Images</option>
                 <option value="video">Videos</option>
+                <option value="text">Text</option>
               </select>
             </div>
 
